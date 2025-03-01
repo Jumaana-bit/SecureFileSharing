@@ -1,4 +1,3 @@
-from cryptography.hazmat.primitives.kdf.ecdh import ECDH
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
