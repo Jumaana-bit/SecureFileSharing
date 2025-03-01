@@ -1,4 +1,4 @@
-from zeroconf import ServiceBrowser, ServiceInfo, Zeroconf
+from zeroconf import ServiceBrowser, ServiceInfo, Zeroconf, ServiceStateChange
 import socket
 
 class PeerDiscovery:
@@ -23,11 +23,13 @@ class PeerDiscovery:
     def discover_peers(self):
         """Listens for other devices offering the same service"""
         def on_service_state_change(zeroconf, service_type, name, state_change):
-            if state_change.is_added:
+            print(f"State change: {state_change}")  # Debug print to see the attributes
+            if state_change == ServiceStateChange.Added:
                 print(f"Discovered: {name}")
                 self.peers.append(name)
 
         browser = ServiceBrowser(self.zeroconf, self.service_type, handlers=[on_service_state_change])
+        
 
     def stop(self):
         """Cleans up when exiting"""
