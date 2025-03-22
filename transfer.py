@@ -1,6 +1,7 @@
 import socket
 import threading
 from security import Security
+from cryptography.hazmat.primitives import serialization  # Add this import
 
 class FileTransfer:
     def __init__(self):
@@ -8,47 +9,73 @@ class FileTransfer:
     
     def send_file(self, file_path, peer_ip, peer_port):
         """Sends an encrypted file to a peer"""
-        # Establish a TCP connection
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((peer_ip, peer_port))
+        try:
+            print(f"Connecting to {peer_ip}:{peer_port}...")  # Debugging
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect((peer_ip, peer_port))
+            print("Connection established.")  # Debugging
 
-        # Exchange public keys
-        sock.sendall(self.security.public_key.public_bytes())
-        peer_public_key_bytes = sock.recv(1024)
+            # Exchange public keys
+            print("Exchanging public keys...")  # Debugging
+            sock.sendall(self.security.public_key.public_bytes(
+                encoding=serialization.Encoding.PEM,  # Use PEM encoding
+                format=serialization.PublicFormat.SubjectPublicKeyInfo  # Use SubjectPublicKeyInfo format
+            ))
+            peer_public_key_bytes = sock.recv(1024)
 
-        # Generate shared AES key
-        aes_key = self.security.generate_shared_key(peer_public_key_bytes)
+            # Generate shared AES key
+            print("Generating shared AES key...")  # Debugging
+            aes_key = self.security.generate_shared_key(peer_public_key_bytes)
 
-        # Encrypt and send file
-        encrypted_file = self.security.encrypt_file(file_path, aes_key)
-        with open(encrypted_file, 'rb') as f:
-            sock.sendall(f.read())
+            # Encrypt and send file
+            print("Encrypting and sending file...")  # Debugging
+            encrypted_file = self.security.encrypt_file(file_path, aes_key)
+            with open(encrypted_file, 'rb') as f:
+                sock.sendall(f.read())
 
-        print(f"Sent encrypted file: {encrypted_file}")
-        sock.close()
+            print(f"Sent encrypted file: {encrypted_file}")
+            sock.close()
+        except Exception as e:
+            print(f"Error sending file: {e}")
 
-    def receive_file(self, port):
-        """Receives and decrypts an encrypted file"""
+    def receive_file(self, port=0):  # Port 0 allows OS to choose an available one
+        """Continuously receives and decrypts encrypted files."""  
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.bind(("0.0.0.0", port))
-        server_socket.listen(1)
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  
+        server_socket.bind(("0.0.0.0", port))  
+        server_socket.listen(5)  # Allows multiple connections  
+        print(f"Listening for incoming files on port {server_socket.getsockname()[1]}...")  # Debugging
 
-        print(f"Listening for incoming files on port {port}...")
-        conn, addr = server_socket.accept()
-        
-        # Receive public key
-        peer_public_key_bytes = conn.recv(1024)
-        conn.sendall(self.security.public_key.public_bytes())
+        while True:  
+            conn, addr = server_socket.accept()  
+            print(f"Connected to {addr}")  # Debugging
+            threading.Thread(target=self.handle_client, args=(conn,)).start()  
 
-        # Generate shared AES key
-        aes_key = self.security.generate_shared_key(peer_public_key_bytes)
+    def handle_client(self, conn):  
+        """Handles a single file transfer in a separate thread."""  
+        try:  
+            # Receive public key  
+            peer_public_key_bytes = conn.recv(1024)  
+            conn.sendall(self.security.public_key.public_bytes(
+                encoding=serialization.Encoding.PEM,  # Use PEM encoding
+                format=serialization.PublicFormat.SubjectPublicKeyInfo  # Use SubjectPublicKeyInfo format
+            ))
 
-        # Receive encrypted file
-        with open("received_file.enc", 'wb') as f:
-            f.write(conn.recv(4096))
+            # Generate shared AES key  
+            aes_key = self.security.generate_shared_key(peer_public_key_bytes)  
 
-        # Decrypt file
-        decrypted_file = self.security.decrypt_file("received_file.enc", aes_key)
-        print(f"File received and decrypted: {decrypted_file}")
+            # Receive encrypted file  
+            with open("received_file.enc", 'wb') as f:  
+                while True:  
+                    chunk = conn.recv(4096)  
+                    if not chunk:  
+                        break  
+                    f.write(chunk)  
 
-        conn.close()
+            # Decrypt file  
+            decrypted_file = self.security.decrypt_file("received_file.enc", aes_key)  
+            print(f"File received and decrypted: {decrypted_file}")  
+        except Exception as e:  
+            print(f"Error handling client: {e}")  
+        finally:  
+            conn.close()

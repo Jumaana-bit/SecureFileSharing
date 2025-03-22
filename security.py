@@ -1,6 +1,7 @@
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization  # Add this import
 import os
 
 class Security:
@@ -11,9 +12,18 @@ class Security:
 
     def generate_shared_key(self, peer_public_key_bytes):
         """Generates a shared AES key using ECDH key exchange"""
-        peer_public_key = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), peer_public_key_bytes)
-        shared_secret = self.private_key.exchange(ec.ECDH(), peer_public_key)
-        return shared_secret[:32]  # Use first 32 bytes as AES key
+        try:
+            # Deserialize the peer's public key from PEM format
+            peer_public_key = serialization.load_pem_public_key(
+                peer_public_key_bytes,
+                backend=default_backend()
+            )
+            # Generate the shared secret
+            shared_secret = self.private_key.exchange(ec.ECDH(), peer_public_key)
+            return shared_secret[:32]  # Use first 32 bytes as AES key
+        except Exception as e:
+            print(f"Error generating shared key: {e}")
+            return None
 
     def encrypt_file(self, file_path, key):
         """Encrypts a file using AES-256"""
