@@ -1,13 +1,16 @@
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QListWidget, QFileDialog, QLabel, QListWidgetItem
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QListWidget, QFileDialog, QLabel, QListWidgetItem, QDialog
 from PyQt6.QtCore import QTimer
 import sys
 import threading
 from discovery import PeerDiscovery
 from transfer import FileTransfer
+from login import LoginDialog, ROLES, users  # Import from login.py
 
 class FileShareApp(QWidget):
-    def __init__(self):
+    def __init__(self, username):
         super().__init__()
+        self.username = username
+        self.user_role = users.get(username, {}).get("role", "Guest")  # Default to Guest
         self.initUI()
         self.discovery = PeerDiscovery(self.deviceList)
         self.file_transfer = FileTransfer()
@@ -19,6 +22,10 @@ class FileShareApp(QWidget):
 
         self.start_peer_discovery()
         self.start_file_receiver()
+
+    def has_permission(self, permission):
+        """Check if the user has the required permission."""
+        return permission in ROLES.get(self.user_role, [])
 
     def initUI(self):
         self.setWindowTitle("Secure File Sharing")
@@ -53,6 +60,10 @@ class FileShareApp(QWidget):
 
     def sendFile(self):
         """Sends the selected file to the chosen peer"""
+        if not self.has_permission("send_file"):
+            print("Permission denied: You do not have permission to send files.")
+            return
+
         selected_peer = self.deviceList.currentItem()
         if selected_peer:
             peer_info = selected_peer.text()
@@ -68,6 +79,14 @@ class FileShareApp(QWidget):
         else:
             print("No peer selected.")  # Debugging
 
+    def start_file_receiver(self):
+        """Starts a thread to listen for incoming file transfers"""
+        if not self.has_permission("receive_file"):
+            print("Permission denied: You do not have permission to receive files.")
+            return
+
+        threading.Thread(target=self.file_transfer.receive_file, args=(self.discovery.port,), daemon=True).start()
+
     def update_ui(self, peers):
         """Slot to update the UI with the latest peers"""
         print("Updating UI...")  # Debugging
@@ -82,12 +101,12 @@ class FileShareApp(QWidget):
         self.discovery.register_service()
         threading.Thread(target=self.discovery.discover_peers, daemon=True).start()
 
-    def start_file_receiver(self):
-        """Starts a thread to listen for incoming file transfers"""
-        threading.Thread(target=self.file_transfer.receive_file, args=(self.discovery.port,), daemon=True).start()
-
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = FileShareApp()
-    window.show()
-    sys.exit(app.exec())
+
+    login_dialog = LoginDialog()
+    if login_dialog.exec() == QDialog.DialogCode.Accepted:
+        username = login_dialog.username_input.text()
+        window = FileShareApp(username)
+        window.show()
+        sys.exit(app.exec())
