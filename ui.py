@@ -1,10 +1,43 @@
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QListWidget, QFileDialog, QLabel, QListWidgetItem, QDialog
+import logging
+from PyQt6.QtWidgets import QApplication, QWidget, QTextEdit, QVBoxLayout, QPushButton, QListWidget, QFileDialog, QLabel, QListWidgetItem, QDialog
 from PyQt6.QtCore import QTimer
 import sys
 import threading
 from discovery import PeerDiscovery
 from transfer import FileTransfer
 from login import LoginDialog, ROLES, users  # Import from login.py
+
+logging.basicConfig(
+    filename="file_share_audit.log",  # Log to a file
+    level=logging.INFO,  # Capture all info and above messages
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+class LogViewerDialog(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("View Logs")
+        self.setGeometry(100, 100, 600, 400)
+
+        layout = QVBoxLayout()
+
+        # Text area to display logs
+        self.logTextArea = QTextEdit(self)
+        self.logTextArea.setReadOnly(True)  # Make the text area read-only
+        layout.addWidget(self.logTextArea)
+
+        # Load the log file
+        with open("file_share_audit.log", "r") as log_file:
+            log_content = log_file.read()
+            self.logTextArea.setText(log_content)
+
+        # Close button
+        close_button = QPushButton("Close", self)
+        close_button.clicked.connect(self.close)
+        layout.addWidget(close_button)
+
+        self.setLayout(layout)
+
 
 class FileShareApp(QWidget):
     def __init__(self, username):
@@ -33,11 +66,28 @@ class FileShareApp(QWidget):
 
         layout = QVBoxLayout()
 
+        self.role_label = QLabel(f"Logged in as: {self.user_role}", self)  # Show user role
+        layout.addWidget(self.role_label)
+
         self.label = QLabel("Available Devices:", self)
         layout.addWidget(self.label)
 
         self.deviceList = QListWidget(self)
         layout.addWidget(self.deviceList)
+
+        # Print the user role to ensure it's set correctly
+        print(f"User role: {self.user_role}")
+
+        # Only add the "Remove Device" button if the user is an admin
+        if self.user_role == "Admin":
+            self.removeDeviceButton = QPushButton("Remove Device", self)
+            self.removeDeviceButton.clicked.connect(self.removeDevice)
+            layout.addWidget(self.removeDeviceButton)
+            print("Remove Device button added.")
+            self.viewLogsButton = QPushButton("View Logs", self)
+            self.viewLogsButton.clicked.connect(self.viewLogs)
+            layout.addWidget(self.viewLogsButton)
+            print("View Logs button added.")  # Debugging
 
         self.selectFileButton = QPushButton("Select File", self)
         self.selectFileButton.clicked.connect(self.selectFile)
@@ -49,6 +99,15 @@ class FileShareApp(QWidget):
         layout.addWidget(self.sendFileButton)
 
         self.setLayout(layout)
+
+    def viewLogs(self):
+        """Displays the log dialog for Admin users"""
+        if self.user_role == "Admin":
+            log_dialog = LogViewerDialog()
+            log_dialog.exec()
+        else:
+            print("You do not have permission to view logs.")
+
 
     def selectFile(self):
         """Opens file dialog to select a file"""
@@ -78,6 +137,21 @@ class FileShareApp(QWidget):
                 print(f"Error parsing peer info: {e}")
         else:
             print("No peer selected.")  # Debugging
+
+    def removeDevice(self):
+        if not self.has_permission("manage_users"):
+            print("Permission denied: You do not have permission to remove files")
+            return
+        selected_peer = self.deviceList.currentItem()
+        if selected_peer:
+            peer_info = selected_peer.text()
+            print(f"Removing peer: {peer_info}")  # Debugging
+            # Here you can add logic to remove the device from the network
+            # E.g., send a request to the device or inform the peer about the removal.
+            self.deviceList.takeItem(self.deviceList.row(selected_peer))  # Remove from UI
+        else:
+            print("No peer selected to remove.")  # Debugging
+
 
     def start_file_receiver(self):
         """Starts a thread to listen for incoming file transfers"""
