@@ -1,5 +1,5 @@
 import logging
-from PyQt6.QtWidgets import QApplication, QWidget, QTextEdit, QVBoxLayout, QPushButton, QListWidget, QFileDialog, QLabel, QListWidgetItem, QDialog
+from PyQt6.QtWidgets import QApplication, QWidget, QTextEdit, QVBoxLayout, QMessageBox, QPushButton, QListWidget, QFileDialog, QLabel, QListWidgetItem, QDialog
 from PyQt6.QtCore import QTimer
 import sys
 import threading
@@ -121,6 +121,7 @@ class FileShareApp(QWidget):
         """Sends the selected file to the chosen peer"""
         if not self.has_permission("send_file"):
             print("Permission denied: You do not have permission to send files.")
+            self.show_permission_error()
             return
 
         selected_peer = self.deviceList.currentItem()
@@ -138,6 +139,15 @@ class FileShareApp(QWidget):
         else:
             print("No peer selected.")  # Debugging
 
+    def show_permission_error(self):
+        """Displays a permission error message to the user."""
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Icon.Critical)
+        msg.setWindowTitle("Permission Denied")
+        msg.setText("You do not have permission to send files.")
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg.exec()
+
     def removeDevice(self):
         if not self.has_permission("manage_users"):
             print("Permission denied: You do not have permission to remove files")
@@ -145,7 +155,8 @@ class FileShareApp(QWidget):
         selected_peer = self.deviceList.currentItem()
         if selected_peer:
             peer_info = selected_peer.text()
-            print(f"Removing peer: {peer_info}")  # Debugging
+            print(f"Removing peer: {peer_info}") 
+            logging.info(f"Removing peer: {peer_info}")
             # Here you can add logic to remove the device from the network
             # E.g., send a request to the device or inform the peer about the removal.
             self.deviceList.takeItem(self.deviceList.row(selected_peer))  # Remove from UI
@@ -162,13 +173,19 @@ class FileShareApp(QWidget):
         threading.Thread(target=self.file_transfer.receive_file, args=(self.discovery.port,), daemon=True).start()
 
     def update_ui(self, peers):
-        """Slot to update the UI with the latest peers"""
+        """Slot to update the UI with the latest peers."""
         print("Updating UI...")  # Debugging
         self.deviceList.clear()  # Clear the list
+
+        if self.user_role == "Guest":
+        # Prevent Guests from seeing other devices
+            print("Guest users cannot see other devices.")
+            return  # Exit the method without adding peers to the list
         for peer in peers:
             peer_info = f"{peer['name']} : {peer['ip']}:{peer['port']}"
             print(f"Adding peer to UI: {peer_info}")  # Debugging
             self.deviceList.addItem(QListWidgetItem(peer_info))  # Add items properly
+
 
     def start_peer_discovery(self):
         """Starts peer discovery in a separate thread to avoid freezing the UI"""
